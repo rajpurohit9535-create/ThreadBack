@@ -19,58 +19,62 @@ Modern software teams using AI face two compounding problems:
 
 **ThreadBack solves both:**
 - **Dual-Agent Architecture**: Teammates explore ideas with isolated **SideQuest sub-agents**. When done, a structured **Return to Mission** workflow extracts and incorporates only approved findings into the shared **Main Agent** context.
-- **Deep GitHub Codebase Intelligence**: Analyzes connected repositories across structural, linguistic, governance, and quality dimensions.
+- **Deep GitHub Codebase Intelligence**: Performs a live, 6-dimensional structural X-ray on any target repository to understand architecture, health, languages, and commit cadence.
 - **Living Architectural Drift Detection**: Automatically audits repository code against approved Main AI decisions, scoring drift percentage, detecting violations, and generating code remediations.
 
 ---
 
-## Capabilities & Architecture (One by One)
+## Architecture & Data Flow
 
 ```mermaid
 flowchart TD
-    subgraph GitHubRepo ["GitHub Repository (Target Codebase)"]
+    subgraph GitHubRepo ["Target GitHub Repository"]
         RepoCode["Source Files & Hierarchy"]
-        RepoCommits["Commit Velocity & Authors"]
+        RepoCommits["Commit Cadence & Authors"]
         RepoGov["Governance (CI, License, Templates)"]
     end
 
-    subgraph GitHubIntelligence ["Deep GitHub Intelligence Layer"]
-        Analyzer["Repository Analyzer\n(6-Dimensional Structural Audit)"]
-        DriftDetector["Architectural Drift Detector\n(Decisions vs Codebase)"]
+    subgraph GitHubIntelligence ["GitHub Intelligence Layer"]
+        Analyzer["Repository Code Analyzer\n(repo-analysis.service.ts)\n6-Dimensional Structural X-Ray"]
+        DriftDetector["Architectural Drift Detector\n(drift-detection.service.ts)\nDecisions vs Codebase Verification"]
     end
 
-    subgraph ThreadBackCore ["ThreadBack Dual-Agent Workspace"]
+    subgraph ThreadBackCore ["ThreadBack Workspace Core"]
         subgraph SideQuests ["Teammate Explorations"]
             SQ1["SideQuest: Dev A\n(e.g., Auth Protocol)"]
             SQ2["SideQuest: Dev B\n(e.g., Database Indexing)"]
         end
-        ReturnFlow["Return to Mission\n(Approved Decision Extraction)"]
-        MainAI["Main Agent & Project Memory\n(Shared Mission Charter)"]
+        ReturnFlow["Return to Mission Workflow\n(Approved Decision Extraction)"]
+        MainAI["Main Agent & Shared Project Memory\n(Charter & Context Guardian)"]
     end
 
     GitHubRepo --> Analyzer
     Analyzer --> DriftDetector
     SideQuests --> ReturnFlow
     ReturnFlow --> MainAI
-    MainAI -->|"Approved Decisions Context"| DriftDetector
+    MainAI -->|"Approved Decisions Charter"| DriftDetector
     DriftDetector -->|"Drift Score & Remediations"| MainAI
 ```
 
 ---
 
+## Detailed Capabilities (One by One)
+
 ### 1. Project Setup & GitHub Repository Association
 
 Every workspace begins clean with strict account and team isolation:
-- **3-Step Project Initialization**: **Project Details** → **Invite Teammates** → **Connect GitHub Repository**.
-- **Deterministic Repository Binding**: Validates repository formats (`https://github.com/owner/repo` or `owner/repo`), sanitizes URLs, and persists them authoritatively in SQLite (`projects.github_repo`).
-- **Token Vaulting**: Connects GitHub via OAuth or Personal Access Tokens, encrypting secrets at rest with **AES-256-GCM** in `backend/src/utils/crypto.ts`.
-- **Rate Limit Resilience**: Uses authenticated requests (5,000 req/hr) when connected, with graceful fallback to cached architectural profiles (such as curated systems profiles) when rate limits are approached.
+- **3-Step Project Setup**: **Project Details** → **Invite Teammates** → **Connect GitHub Repository**.
+- **Deterministic Repository Binding**: Validates repository formats (`https://github.com/owner/repo` or `owner/repo`), normalizes URLs, and persists them authoritatively in SQLite (`projects.github_repo`).
+- **AES-256-GCM Token Vaulting**: Connects GitHub via OAuth or Personal Access Tokens, encrypting secrets at rest in `backend/src/utils/crypto.ts`.
+- **Project Switching Isolation**: Switching projects or accounts instantly reloads the respective repository associations and purges unrelated cache.
 
 ---
 
 ### 2. Deep GitHub Repository Analysis & Codebase Intelligence
 
-ThreadBack does not treat repositories as static text blobs. It performs an in-depth, multi-dimensional architectural analysis via `repoAnalysisService`:
+The **Repository Code Analyzer** (`backend/src/services/repo-analysis.service.ts`) acts as an automated, non-invasive **"Live X-Ray"** on any target GitHub repository before or during mission execution.
+
+Instead of treating code as unparsed text, ThreadBack analyzes the physical repository structure, developer cadence, and engineering governance.
 
 ```
 POST /api/github/analyze
@@ -80,46 +84,118 @@ POST /api/github/analyze
 }
 ```
 
-The analysis produces an authoritative structural report covering:
+#### How We Analyze (The Inspection Pipeline)
 
-#### A. Repository Identity & Commit Velocity
-- Tracks repository metadata (stars, forks, watchers, topics, default branch).
-- Inspects the latest commit: SHA, commit message, and author identity to gauge repository freshness and commit cadence.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Developer / Agent
+    participant API as ThreadBack API (/api/github/analyze)
+    participant Vault as Token Vault (crypto.ts)
+    participant Analyzer as repoAnalysisService
+    participant GH as GitHub REST API (v3)
 
-#### B. File Tree & Hierarchy Topography
-- Parses the top-level repository tree (`/contents`), enumerating root assets, entrypoints, and subdirectory topology.
-- Detects the presence of key architectural directories (e.g., `src/`, `backend/`, `frontend/`, `.github/`).
+    Dev->>API: Request Analysis (projectId or repo URL)
+    API->>Vault: Retrieve & Decrypt User Access Token (AES-256-GCM)
+    Vault-->>API: Decrypted Bearer Token (or null for public fallback)
+    API->>Analyzer: analyzeRepository(normalizedUrl, token)
+    
+    par Multi-Vector Inspection
+        Analyzer->>GH: GET /repos/{owner}/{repo} (Metadata, Stars, Topics)
+        Analyzer->>GH: GET /repos/{owner}/{repo}/contents (Root Tree & Dirs)
+        Analyzer->>GH: GET /repos/{owner}/{repo}/commits?per_page=1 (Latest SHA, Author)
+        Analyzer->>GH: GET /repos/{owner}/{repo}/languages (Byte-level Distribution)
+    end
+    GH-->>Analyzer: Raw API Responses
 
-#### C. Language Composition & Byte Distribution
-- Calculates exact byte-level language distributions via GitHub's Language API.
-- Identifies primary systems languages (C, C++, Rust, Go, TypeScript, Python) and multi-stack footprints.
+    Analyzer->>Analyzer: Parse Hierarchy, Governance & Module Taxonomy
+    Analyzer->>Analyzer: Generate Mission Suitability & Recommended SideQuests
+    Analyzer-->>API: Return Structured RepoAnalysisReport JSON
+    API-->>Dev: Live Architectural Dashboard & AI Context
+```
 
-#### D. Architectural Taxonomy & Subsystem Categorization
-- Synthesizes topic tags, directory layouts, and language fingerprints into high-level computational domains (e.g., *Database Engines*, *Container Runtimes*, *Compilers/Parsers*, *Networking Protocols*).
+1. **Repository Parsing & Normalization**: Accepts full URLs (`https://github.com/owner/repo`) or shorthand (`owner/repo`), strips trailing `.git` extensions and whitespace, and extracts validated `owner` and `repo` segments. If omitted, it automatically queries the active project's bound `projects.github_repo`.
+2. **Encrypted Token Injection**: Decrypts the user's vaulted GitHub token with AES-256-GCM and injects `Authorization: Bearer <token>` headers, raising GitHub's rate limit from 60 requests/hr to **5,000 requests/hr**.
+3. **Concurrent Multi-Vector Fetching**: Issues parallel requests across GitHub's REST endpoints (repository metadata, contents, commit history, and language metrics).
+4. **Structural & Governance Synthesis**: Scans directory assets for institutional standards (`README.md`, `LICENSE`, `CONTRIBUTING.md`, `.github/workflows`), calculates language percentages, and maps topic categories.
+5. **AI Suitability & Tangent Formulation**: Formulates mission suitability, auto-recommends high-impact SideQuests, and identifies potential drift risks.
+6. **Resilience & Rate-Limit Handling**: If unauthenticated calls hit rate limits (HTTP 403/429), high-traffic educational repositories (such as `codecrafters-io/build-your-own-x`) use an authoritative curated fallback report, ensuring zero workflow interruptions.
 
-#### E. Code Quality, Governance & CI Audit
-Evaluates institutional engineering standards with boolean flags and qualitative observations:
-- `hasDocumentation`: Verified presence of architectural root `README.md`.
-- `hasContributionGuide`: Detection of `CONTRIBUTING.md` standards.
-- `hasIssueTemplate`: Detection of `ISSUE_TEMPLATE.md` or `.github/` templates.
-- `hasRootLicense`: Verification of root open-source license (`LICENSE`, `LICENSE.md`, `COPYING`).
-- `hasCIWorkflow`: Verification of automated GitHub Actions pipelines (`.github/workflows/*.yml`).
+---
 
-#### F. ThreadBack Engineering Insights & SideQuest Generation
-- **Suitability for Missions**: Assesses how well the codebase fits autonomous agent missions.
-- **Recommended SideQuests**: Auto-generates high-value tangents for developers to investigate (e.g., *"Audit indexing performance"*, *"Evaluate CI workflow gaps"*).
-- **Drift Risks**: Highlights architectural pitfalls, unpinned dependencies, or version discrepancies.
+#### What Exactly Are We Analyzing? (The 6 Technical Dimensions)
 
-#### G. Feedback & Institutional Rating
-- Teammates can rate analysis reports from 1 to 5 stars with qualitative feedback (`POST /api/github/feedback`), persisting institutional ratings in SQLite.
+| Dimension | What Is Inspected | Why It Matters & What It Reveals |
+| :--- | :--- | :--- |
+| **1. Metadata & Community Footprint** | Stars, forks, watchers, default branch (`main` vs `master`), visibility, and repository topics. | Proves repository legitimacy, active community adoption, default branch targeting, and broad technical scope. |
+| **2. File Tree Topology & Root Assets** | Top-level files and directories (differentiating `[DIR]` from files), root configs, and subfolder layout. | Uncovers codebase structure (monorepo vs single service), locates entrypoints (`src/`, `backend/`, `frontend/`), and flags unexpected asset clutter. |
+| **3. Commit Stream & Activity Cadence** | Latest commit SHA, author name/login, commit timestamp, and PR merge messages. | Determines whether the codebase is actively maintained or abandoned, reveals the latest code state, and establishes a baseline SHA for drift auditing. |
+| **4. Language & Byte Distribution** | Byte-by-byte language composition calculated via GitHub Linguist. | Reveals the true language makeup (e.g., 65% Rust, 30% TypeScript, 5% Shell) instead of superficial descriptions, and guards against unwanted binary blobs. |
+| **5. README & Module Taxonomy** | Root README presence, topic taxonomy, and technical sub-system categorization. | Automatically categorizes the project into core domains (e.g., *Database Engines*, *Container Runtimes*, *Compilers/Parsers*, *Network Protocols*) so AI agents have an instant domain taxonomy. |
+| **6. Governance Health & Engineering Rigor** | Verifies existence of `LICENSE`, `CONTRIBUTING.md`, `ISSUE_TEMPLATE.md`, and `.github/workflows/*.yml`. | Audits legal safety (permissive OSS licensing), standardized collaboration guides, bug reporting templates, and automated CI/CD pipelines. |
+
+---
+
+#### ThreadBack Engineering Insights (Actionable AI Layer)
+
+The analyzer synthesizes the raw inspection data into three actionable outputs for the engineering team:
+1. **Suitability for Missions**: An objective evaluation of how ready the codebase is for AI-assisted engineering and autonomous agent tasks.
+2. **Recommended SideQuests**: Pre-formulated technical investigations that teammates can branch into with a single click (e.g., *"Audit SQLite B-Tree indexing performance"*, *"Investigate container namespace isolation"*).
+3. **Architectural Drift Risks**: Explicit flags warning of unpinned dependencies, missing lockfiles, decaying external references, or multi-language version drift.
+
+#### Example Analysis Report JSON
+
+```json
+{
+  "repository": {
+    "name": "build-your-own-x",
+    "fullName": "codecrafters-io/build-your-own-x",
+    "url": "https://github.com/codecrafters-io/build-your-own-x",
+    "stars": 555571,
+    "defaultBranch": "master",
+    "language": "Markdown",
+    "topics": ["systems-programming", "tutorials", "learn-to-code"]
+  },
+  "latestCommit": {
+    "sha": "aa17439b62f384511a5561ce308e9598b94d8989",
+    "author": "Maintainer",
+    "message": "Merge pull request #1844: fix anchor references"
+  },
+  "fileSummary": {
+    "topLevelCount": 4,
+    "items": ["[DIR] .github", "ISSUE_TEMPLATE.md", "README.md", "LICENSE"],
+    "languages": { "Markdown": 47830 }
+  },
+  "keyCategoriesOrModules": ["Database", "Docker", "Git", "Operating System", "Network Stack"],
+  "codeQualityAndPractices": {
+    "hasDocumentation": true,
+    "hasContributionGuide": true,
+    "hasIssueTemplate": true,
+    "hasRootLicense": true,
+    "hasCIWorkflow": true,
+    "observations": ["Verified architectural README present at repository root."]
+  },
+  "threadBackEngineeringInsights": {
+    "suitabilityForMissions": "Exceptionally well-suited for ThreadBack Mission and SideQuest workflows.",
+    "recommendedSideQuests": [
+      "Audit codebase structure and modularity",
+      "Evaluate test coverage and CI configuration",
+      "Map key dependencies and package architecture"
+    ],
+    "driftRisks": ["Dependencies may require pinned lockfiles before containerized execution."]
+  },
+  "rateLimitStatus": "live",
+  "analyzedAt": "2026-10-23T17:15:00.000Z"
+}
+```
 
 ---
 
 ### 3. Architectural Drift Detection (Code vs Main AI Decisions)
 
-A central problem in collaborative software development: **Does the actual code match what the team decided in the AI chat?**
+A central problem in collaborative software development: **Does the physical code match what the team agreed upon in the AI chat?**
 
-ThreadBack integrates **Main AI Decisions** directly into automated drift analysis:
+ThreadBack's **Drift Detection Engine** (`backend/src/services/drift-detection.service.ts`) directly evaluates repository code against live **Main AI Decisions**:
 
 ```
 POST /api/github/drift-analysis
@@ -129,9 +205,9 @@ POST /api/github/drift-analysis
 ```
 
 #### Step-by-Step Drift Analysis Engine:
-1. **Dynamic Context Extraction**: Resolves all approved decisions (`shared_decisions`) recorded by teammates and active mission objectives for the project.
+1. **Dynamic Context Extraction**: Queries all approved team decisions (`shared_decisions`) recorded by teammates and active mission objectives for the project.
 2. **Charter Synthesis**: Forms the baseline specification from approved architecture decisions, rationales, and constraints.
-3. **Repository Verification**: Compares the physical repository artifacts, tree structure, latest commits, and governance files against each approved decision.
+3. **Repository Verification**: Audits repository artifacts, file tree structure, latest commits, and governance files against each approved decision.
 4. **Conflict Classification**:
    - `NO_CONFLICT`: Implementation directly satisfies the decision and verified evidence is cited.
    - `CONFIRMED_CONFLICT`: Codebase contradicts the decision (e.g., missing license, violated architectural standard).
